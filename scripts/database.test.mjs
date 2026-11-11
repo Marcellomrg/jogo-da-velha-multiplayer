@@ -1,0 +1,43 @@
+import {test} from 'vitest';
+import assert from 'node:assert/strict';
+import {readFile} from 'node:fs/promises';
+import {PGlite} from '@electric-sql/pglite';
+const sql=await readFile(new URL('../backend/schema.sql',import.meta.url),'utf8');
+test('PostgreSQL: sessão, perfil, partida, validações e placar', async()=>{
+  const db=new PGlite();
+  const session=(id)=>JSON.stringify({'x-hasura-user-id':id});
+  const A=session('auth0|a'),B=session('auth0|b'),C=session('auth0|c');
+  const call=async (fn,args)=>(await db.query('SELECT * FROM public.'+fn+'('+args.map((_,i)=>'$'+(i+1)).join(',')+')',args)).rows[0];
+  try{
+    await db.exec(sql);
+    await assert.rejects(call('criar_partida',[A]),/Cadastre/);
+    await assert.rejects(call('registrar_perfil',['{}','Inválido']),/Sessão inválida/);
+    const ana=await call('registrar_perfil',[A,'Ana']);
+    await call('registrar_perfil',[B,'Bruno']);
+    await assert.rejects(call('registrar_perfil',[C,'Ana']),/indisponível/);
+    await call('registrar_perfil',[C,'Carla']);
+    const game=await call('criar_partida',[A]);
+    assert.equal(game.status,'aguardando');
+    await assert.rejects(call('realizar_jogada',[A,game.id,0]),/fora de andamento/);
+    await call('entrar_partida',[B,game.codigo_sala]);
+    await assert.rejects(call('entrar_partida',[C,game.codigo_sala]),/Sala cheia/);
+    await assert.rejects(call('realizar_jogada',[C,game.id,0]),/indisponível/);
+    await assert.rejects(call('realizar_jogada',[B,game.id,0]),/Aguarde/);
+    await assert.rejects(call('realizar_jogada',[A,game.id,9]),/inválida/);
+    await call('realizar_jogada',[A,game.id,0]);
+    await assert.rejects(call('realizar_jogada',[B,game.id,0]),/ocupada/);
+    for(const [user,cell] of [[B,3],[A,1],[B,4]]) await call('realizar_jogada',[user,game.id,cell]);
+    const win=await call('realizar_jogada',[A,game.id,2]);
+    assert.equal(win.status,'finalizada');assert.equal(win.vencedor_id,ana.id);
+    await assert.rejects(call('realizar_jogada',[B,game.id,8]),/fora de andamento/);
+    const draw=await call('criar_partida',[A]);
+    await call('entrar_partida',[B,draw.codigo_sala]);
+    const drawCells=[0,1,2,4,3,5,7,6,8];
+    let last;
+    for(const [index,cell] of drawCells.entries()) last=await call('realizar_jogada',[index%2?B:A,draw.id,cell]);
+    assert.equal(last.status,'finalizada');assert.equal(last.vencedor_id,null);
+    const result=await db.query('SELECT apelido,pontos,vitorias,empates,derrotas FROM placar ORDER BY pontos DESC');
+    assert.deepEqual(result.rows,[{apelido:'Ana',pontos:4,vitorias:1,empates:1,derrotas:0},{apelido:'Bruno',pontos:1,vitorias:0,empates:1,derrotas:1}]);
+    assert.equal((await db.query('SELECT count(*)::int total FROM jogadas')).rows[0].total,14);
+  }finally{await db.close();}
+},20000);
