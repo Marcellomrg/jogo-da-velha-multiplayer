@@ -1,0 +1,29 @@
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: jogo
+      POSTGRES_PASSWORD: jogo_local
+      POSTGRES_DB: jogo
+    volumes:
+      - dados:/var/lib/postgresql/data
+      - ./backend/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U jogo -d jogo"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+  hasura:
+    image: hasura/graphql-engine:v2.48.5
+    ports: ["127.0.0.1:8080:8080"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      HASURA_GRAPHQL_METADATA_DATABASE_URL: postgres://jogo:jogo_local@postgres:5432/jogo
+      PG_DATABASE_URL: postgres://jogo:jogo_local@postgres:5432/jogo
+      HASURA_GRAPHQL_ADMIN_SECRET: ${HASURA_ADMIN_SECRET:?Defina HASURA_ADMIN_SECRET}
+      HASURA_GRAPHQL_JWT_SECRET: ${HASURA_GRAPHQL_JWT_SECRET:?Defina HASURA_GRAPHQL_JWT_SECRET}
+      HASURA_GRAPHQL_ENABLE_CONSOLE: "false"
+volumes:
+  dados:
