@@ -1,0 +1,9 @@
+{
+  "name": "jogo-da-velha-parse-server",
+  "private": true,
+  "version": "1.0.0",
+  "type": "commonjs",
+  "scripts": {"start": "node container/server.cjs"},
+  "engines": {"node": ">=24.11 <25"},
+  "dependencies": {"express": "4.22.1", "parse-server": "9.11.0"}
+}
