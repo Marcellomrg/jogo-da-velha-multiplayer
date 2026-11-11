@@ -1,0 +1,33 @@
+name: Testes do jogo
+on:
+  pull_request:
+    branches: [dev, main]
+  push:
+    branches: [dev, main]
+permissions:
+  contents: read
+jobs:
+  testes:
+    runs-on: ubuntu-latest
+    env:
+      HASURA_URL: http://localhost:8080
+      HASURA_ADMIN_SECRET: ci-local-secret-integration-only
+      CI_JWT_KEY: ci-jwt-key-disposable-integration-only
+      HASURA_GRAPHQL_JWT_SECRET: '{"type":"HS256","key":"ci-jwt-key-disposable-integration-only"}'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+      - run: docker compose up -d --wait
+      - run: curl --retry 15 --retry-all-errors --retry-delay 2 --fail http://localhost:8080/healthz
+      - run: node backend/metadata.mjs
+      - run: node scripts/smoke.mjs
+      - if: failure()
+        run: docker compose logs
+      - if: always()
+        run: docker compose down -v
