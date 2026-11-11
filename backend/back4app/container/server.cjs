@@ -12,6 +12,11 @@ const port = Number(process.env.PORT || 8080);
 const appId = env('PARSE_APP_ID');
 const masterKey = env('PARSE_MASTER_KEY');
 const javascriptKey = env('PARSE_JS_KEY');
+const databaseURI = new URL(env('DATABASE_URI'));
+// O adaptador PostgreSQL do Parse usa ssl=true para habilitar TLS.
+if (['require', 'verify-ca', 'verify-full'].includes(databaseURI.searchParams.get('sslmode'))) {
+  databaseURI.searchParams.set('ssl', 'true');
+}
 if (masterKey.length < 32 || masterKey === javascriptKey) {
   throw new Error('Use uma chave administrativa aleatória e diferente da chave pública.');
 }
@@ -44,7 +49,7 @@ async function start() {
   app.disable('x-powered-by');
   const server = new ParseServer({
     appId, masterKey, javascriptKey,
-    databaseURI: env('DATABASE_URI'),
+    databaseURI: databaseURI.toString(),
     serverURL: `http://127.0.0.1:${port}/parse`,
     cloud: path.join(__dirname, '..', 'cloud', 'main.js'),
     allowClientClassCreation: false,
